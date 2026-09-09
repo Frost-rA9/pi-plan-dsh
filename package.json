@@ -1,0 +1,33 @@
+{
+  "name": "pi-plan-dsh",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Plan-mode guidance for pi, modeled on a single reference source (dsh plan-mode): /plan enters, the plan:policy prompt section guides, and exit_plan_mode presents the plan for approval to leave. Guidance axis only — orthogonal to the write-boundary sandbox (pi-sandbox-dsh). Replaces the deprecated pi-plan-mode.",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm test --workspaces"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.4",
+    "@types/node": "^24.0.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.3"
+  }
+}
