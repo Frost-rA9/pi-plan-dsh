@@ -19,9 +19,11 @@ import {
   type PlanModeConfig,
 } from "pi-plan-dsh-bridge";
 
-/** 徽标文案 `[plan-mode]`：激活=蓝(accent)，未激活=清除。 */
-function planBadge(theme: Theme, active: boolean): string | undefined {
-  return active ? theme.fg("accent", "[plan-mode]") : undefined;
+/** 徽标文案（常驻）：`[plan-mode:on]`=橙(256色208，对齐 sandbox read-only)；`[plan-mode:off]`=蓝(accent，对齐 sandbox workspace-write)。 */
+function planBadge(theme: Theme, active: boolean): string {
+  return active
+    ? "\x1B[38;5;208m[plan-mode:on]\x1B[0m"
+    : theme.fg("accent", "[plan-mode:off]");
 }
 
 export default function planExtension(pi: ExtensionAPI): void {

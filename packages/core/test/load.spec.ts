@@ -33,9 +33,10 @@ const pi = {
   getFlag: () => undefined,
 } as never;
 
+let lastBadge: string | undefined;
 const ui = {
   theme: { fg: (_c: string, t: string) => t },
-  setStatus: () => {},
+  setStatus: (_k: string, t: string | undefined) => { lastBadge = t; },
   notify: () => {},
   select: async () => "批准",
   input: async () => "",
@@ -89,6 +90,8 @@ try {
   failed++;
   console.error(`  ✗ session_start 异常: ${e instanceof Error ? e.message : String(e)}`);
 }
+console.log("=== 徽标常驻：激活 → [plan-mode:on]（橙）? ===");
+assert(typeof lastBadge === "string" && lastBadge!.includes("[plan-mode:on]"), "active → badge [plan-mode:on]");
 
 console.log("=== 激活后 before_agent_start 注入 plan:policy? ===");
 try {
@@ -107,6 +110,7 @@ try {
   const r = handlers["before_agent_start"]!({ systemPrompt: "base" }) as { systemPrompt?: string } | undefined;
   assert(r === undefined, "/plan off → no plan:policy injection");
   assert(entries.some((e) => (e as { customType?: string }).customType === "plan/mode"), "/plan off appends plan/mode");
+  assert(lastBadge === "[plan-mode:off]", "/plan off → badge [plan-mode:off]（蓝）");
   passed++;
 } catch (e) {
   failed++;
