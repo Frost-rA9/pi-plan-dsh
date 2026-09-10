@@ -7,7 +7,7 @@ A pi extension that ports dsh's **plan collaboration state** to pi as **soft gui
 **Guidance axis only — not a security boundary.**
 
 - `/plan` enters plan mode; `/plan off` leaves it; `/plan <message>` enters and steers the message in.
-- While active, a `plan:policy` prompt section is injected at each agent start — only the prompt changes, never the tool catalog.
+- While active, a `plan:policy` prompt section is injected at each agent start — only the prompt changes, never the tool catalog. The section is assembled once per user turn: a mode switch made mid-turn takes effect from the next turn's prompt (the model is told immediately by the switch notice, or by the tool result on an approved exit).
 - `exit_plan_mode` stays registered whether or not plan mode is active, so entering/leaving changes only the prompt section. A complete markdown plan starting with a `#` heading is presented for user review as a **collapsible block in the conversation transcript** — scrollable, selectable, restored on resume, never part of the LLM context, and expandable with the standard tool-output toggle; the approval prompt itself stays a three-line bottom dialog, so reviewing never squeezes the conversation out of view. Approval exits plan mode, "keep planning" sends feedback back to the model.
 - State is a log-only whole-value-replace event `plan/mode: { active }` — the last one wins; resume/fork/compaction restore via fold. It is **never** an in-memory source of truth.
 
@@ -33,7 +33,7 @@ The plan/enforcement split mirrors dsh and is fully orthogonal:
 
 ## Backends
 
-None — this is a guidance-only extension (no OS sandbox, no preview/question capability seam). See the local `AGENTS.md` (gitignored) for the design rationale and the known trade-offs.
+None — this is a guidance-only extension (no OS sandbox, no preview/question capability seam). See [DESIGN.md](DESIGN.md) for the design rationale and the known trade-offs.
 
 ## License
 
