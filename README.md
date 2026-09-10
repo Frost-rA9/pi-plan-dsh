@@ -8,7 +8,7 @@ A pi extension that ports dsh's **plan collaboration state** to pi as **soft gui
 
 - `/plan` enters plan mode; `/plan off` leaves it; `/plan <message>` enters and steers the message in.
 - While active, a `plan:policy` prompt section is injected at each agent start — only the prompt changes, never the tool catalog.
-- `exit_plan_mode` stays registered whether or not plan mode is active, so entering/leaving changes only the prompt section; a complete markdown plan starting with a `#` heading is presented for user review; approval exits plan mode, "keep planning" sends feedback back to the model.
+- `exit_plan_mode` stays registered whether or not plan mode is active, so entering/leaving changes only the prompt section. A complete markdown plan starting with a `#` heading is presented for user review as a **collapsible block in the conversation transcript** — scrollable, selectable, restored on resume, never part of the LLM context, and expandable with the standard tool-output toggle; the approval prompt itself stays a three-line bottom dialog, so reviewing never squeezes the conversation out of view. Approval exits plan mode, "keep planning" sends feedback back to the model.
 - State is a log-only whole-value-replace event `plan/mode: { active }` — the last one wins; resume/fork/compaction restore via fold. It is **never** an in-memory source of truth.
 
 ## Orthogonality
@@ -27,7 +27,7 @@ The plan/enforcement split mirrors dsh and is fully orthogonal:
 1. Plan mode is guidance — no tool filtering, no write caps.
 2. State is the log fold of `plan/mode` — never an in-memory source.
 3. The model cannot switch mode on its own; only the user's `/plan` decides.
-4. Approval interaction never enters the model context; results come back via the tool result / a failed call.
+4. Approval interaction never enters the model context; results come back via the tool result / a failed call. The reviewed plan is a TUI-only transcript block — durable and re-readable, but never sent to the model.
 5. **Fail closed**: no interactive channel, a reload during review, or a dismissed review → `exit_plan_mode` fails, leaving `/plan off` as the escape hatch.
 6. Fully orthogonal to `pi-sandbox-dsh` — no shared state or types.
 
