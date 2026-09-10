@@ -4,19 +4,26 @@
  * 单一参考源 = dsh：plan 协作状态（软引导轴），与 pi-sandbox-dsh（强制轴）完全正交。
  * 装配：session_start 用 `getEntries()` 折叠 `plan/mode`（不变量 2）→ `/plan` 命令（用户决策点）
  * → `before_agent_start` 注入 `plan:policy` 段（不改工具目录）→ `exit_plan_mode` 工具（始终注册，
- * `#`markdown 校验 + 用户审批 + fail-closed）。
+ * `#`markdown 校验 + 计划进聊天记录 + 用户审批 + fail-closed）。
+ *
+ * 审阅形态（对齐 dsh `plan-review` 意图的 pi 化）：**计划本体走 TUI-only entry（消息区、可滚动、持久、
+ * 不进 LLM 上下文），审批走底部小交互（select/input）**——不把长内容塞进编辑器区域。
  */
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
+import { Box, Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   PLAN_MODE_ENTRY,
+  PLAN_REVIEW_ENTRY,
   DEFAULT_PLAN_ACTIVE,
   DEFAULT_PLAN_SECTION,
   foldPlanMode,
   renderPlanPolicy,
   resolvePlanConfig,
   hasPlanHeading,
+  summarizePlan,
   type PlanModeConfig,
+  type PlanReviewData,
 } from "pi-plan-dsh-bridge";
 
 /** 徽标文案（常驻）：`[plan-mode:on]`=橙(256色208，对齐 sandbox read-only)；`[plan-mode:off]`=蓝(accent，对齐 sandbox workspace-write)。 */
@@ -125,6 +132,26 @@ export default function planExtension(pi: ExtensionAPI): void {
     },
   });
 
+  // 计划审阅 entry 的 TUI 渲染器（TUI-only，不进 LLM 上下文）：
+  // 计划本体渲染在**聊天记录（消息区）**——跟随 transcript 滚动、可选中复制、resume 后仍在；
+  // 展开/折叠沿用 pi 既有全局开关（ctrl+o / `app.tools.expand`，默认折叠 = 只预览前若干行）。
+  pi.registerEntryRenderer<PlanReviewData>(PLAN_REVIEW_ENTRY, (entry, { expanded }, theme) => {
+    const plan = entry.data?.plan ?? "";
+    const summary = summarizePlan(plan);
+    const title = summary.heading === undefined ? "计划待审批" : `计划待审批：${summary.heading}`;
+    const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+    box.addChild(new Text(theme.bold(theme.fg("accent", `${title} · ${summary.lineCount} 行`)), 0, 0));
+    if (expanded) {
+      box.addChild(new Markdown(plan, 0, 0, getMarkdownTheme()));
+    } else {
+      if (summary.preview !== "") box.addChild(new Text(summary.preview, 0, 0));
+      if (summary.omitted > 0) {
+        box.addChild(new Text(theme.fg("dim", `… 还有 ${summary.omitted} 行（ctrl+o 展开）`), 0, 0));
+      }
+    }
+    return box;
+  });
+
   // 退出工具：始终注册（零 tool-catalog churn）；`#`markdown 校验；审批走 ctx.ui；fail-closed。
   pi.registerTool({
     name: "exit_plan_mode",
@@ -139,6 +166,16 @@ export default function planExtension(pi: ExtensionAPI): void {
         description: "The complete plan, as markdown, starting with a # heading that names it.",
       }),
     }),
+    renderCall(args, theme) {
+      // 调用行紧凑化：不铺计划正文（正文由 PLAN_REVIEW_ENTRY 渲染在消息区）。
+      const summary = summarizePlan(args.plan ?? "");
+      const name = summary.heading ?? "计划";
+      return new Text(
+        theme.fg("toolTitle", theme.bold("exit_plan_mode")) + theme.fg("dim", ` · ${name} · ${summary.lineCount} 行`),
+        0,
+        0,
+      );
+    },
     async execute(_id, params, _signal, _onUpdate, ctx) {
       if (!active) {
         throw new Error("exit_plan_mode is only available in plan mode");
@@ -149,8 +186,9 @@ export default function planExtension(pi: ExtensionAPI): void {
       if (!ctx.ui?.select) {
         throw new Error("no interactive review is available; ask the user to /plan off instead");
       }
-      // 让用户看到完整计划（骨架版；后续可升级为 ctx.ui.custom 富审）。
-      ctx.ui.notify("计划待审批：\n" + params.plan, "info");
+      // 计划本体进聊天记录（TUI-only entry）：用户审阅的地方 = 消息区（可滚动/持久/不耗模型 token，
+      // 不变量 4「批准交互不进模型上下文」）；底部 select 只做决策，不挤消息区、不替换编辑器。
+      pi.appendEntry(PLAN_REVIEW_ENTRY, { plan: params.plan });
       const choice = await ctx.ui.select("批准该计划并退出计划模式？", ["批准", "继续规划"]);
       if (choice === "批准") {
         setActive(false);

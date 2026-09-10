@@ -3,7 +3,8 @@
  *
  * 单一参考源 = dsh `packages/plan/plan-mode`。这里是"plan 协作状态"的**核心词表**：
  * 一条 log-only whole-value-replace 事件 `plan/mode: { active }`、plan:policy prompt 段、
- * 配置校验（`{ section }`，未知键拒绝）、markdown 计划头校验。
+ * 配置校验（`{ section }`，未知键拒绝）、markdown 计划头校验、计划审阅 entry（`plan/review`，TUI-only）
+ * 与其折叠摘要 `summarizePlan`。
  * 全部为纯函数（无副作用），供 core（唯一 pi 扩展宿主）与测试共享。
  *
  * 对齐 dsh：`plan-mode/src/{index,types,invariant}.ts` + `planProjectionDefinition`；
@@ -25,6 +26,18 @@ export const PLAN_MODE_ENTRY = 'plan/mode';
 /** 事件载荷：`{ active }`，日志真源。 */
 export interface PlanModeData {
   active: boolean;
+}
+
+/**
+ * 计划审阅 entry 的 customType。**TUI-only**：`pi.appendEntry` 进会话日志但**不进 LLM 上下文**
+ * （`docs/extensions.md`：custom entries do NOT participate in LLM context），配合
+ * `pi.registerEntryRenderer` 渲染进聊天记录（消息区），作为"用户审阅计划"的持久载体。
+ */
+export const PLAN_REVIEW_ENTRY = 'plan/review';
+
+/** 计划审阅 entry 的载荷：计划全文（markdown）。 */
+export interface PlanReviewData {
+  plan: string;
 }
 
 /** 投影视图：`{ active, pending }`。pi 立即落地 → `pending` 恒 false（备将来扩展）。 */
@@ -112,4 +125,38 @@ export function firstPlanHeading(plan: string): string | undefined {
     if (match) return match[1];
   }
   return undefined;
+}
+
+/* ------------------------------ 计划审阅 entry 的折叠摘要 ------------------------------ */
+
+/** 折叠态预览行数（展开态由 pi 的 ctrl+o / `app.tools.expand` 统一控制）。 */
+export const PLAN_PREVIEW_LINES = 8;
+
+/** 计划正文的行数 + 折叠态预览（entry renderer 与 renderCall 共用，纯函数）。 */
+export interface PlanSummary {
+  /** 首个 markdown 标题文本，无标题则无该键。 */
+  heading?: string;
+  /** 计划正文行数（忽略尾部空行）。 */
+  lineCount: number;
+  /** 折叠态预览（前 `PLAN_PREVIEW_LINES` 行）。 */
+  preview: string;
+  /** 预览之外被省略的行数（0 = 预览即全文）。 */
+  omitted: number;
+}
+
+/**
+ * 折叠一份计划：标题 / 行数 / 前 N 行预览 / 省略行数。
+ * 输入允许为空或流式未完成（args 可能只有片段），不抛错。
+ */
+export function summarizePlan(plan: string, previewLines: number = PLAN_PREVIEW_LINES): PlanSummary {
+  const body = plan.replace(/\s+$/, '');
+  const lines = body === '' ? [] : body.split('\n');
+  const limit = Math.max(0, previewLines);
+  const heading = firstPlanHeading(body);
+  const summary: PlanSummary = {
+    lineCount: lines.length,
+    preview: lines.slice(0, limit).join('\n'),
+    omitted: Math.max(0, lines.length - limit),
+  };
+  return heading === undefined ? summary : { ...summary, heading };
 }
