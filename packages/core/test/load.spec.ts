@@ -20,6 +20,7 @@ const tools: Record<string, unknown>[] = [];
 const commands: Record<string, unknown> = {};
 const handlers: Record<string, (...a: unknown[]) => unknown> = {};
 const messages: unknown[] = [];
+const sent: { message: unknown; options: unknown }[] = [];
 const entries: unknown[] = [];
 const entryRenderers: Record<string, (...a: unknown[]) => unknown> = {};
 
@@ -29,7 +30,7 @@ const pi = {
   registerFlag: () => {},
   registerEntryRenderer: (type: string, renderer: (...a: unknown[]) => unknown) => { entryRenderers[type] = renderer; },
   on: (name: string, h: (...a: unknown[]) => unknown) => { handlers[name] = h; },
-  sendMessage: (m: unknown) => { messages.push(m); },
+  sendMessage: (m: unknown, o?: unknown) => { messages.push(m); sent.push({ message: m, options: o }); },
   sendUserMessage: (m: unknown) => { messages.push(m); },
   appendEntry: (type: string, data: unknown) => { entries.push({ customType: type, data }); },
   setActiveTools: () => {},
@@ -219,6 +220,66 @@ try {
 } catch (e) {
   failed++;
   console.error(`  ✗ entry renderer 折叠态异常: ${e instanceof Error ? e.message : String(e)}`);
+}
+
+console.log("=== notice 语义：仅 /plan 命令族叙述，审批路径静默 ===");
+try {
+  const planHandler = (commands["plan"] as { handler: (args: string, ctx: unknown) => Promise<void> }).handler;
+  const ex = exitTool as { execute: (id: string, params: { plan: string }, s: unknown, u: unknown, c: unknown) => Promise<unknown> };
+  const notices = () =>
+    sent.filter((x) => (x.message as { customType?: string }).customType === "plan/mode:notice");
+  const activeEntries = () =>
+    entries.filter((e) => (e as { customType?: string }).customType === "plan/mode") as { data?: { active?: boolean } }[];
+
+  await planHandler("on", { ui }); // 归一到 active=true（若刚从窗口态过来则不叙述）
+
+  // (1) 审批路径静默（且状态确实翻转）
+  const beforeApprove = notices().length;
+  await ex.execute("5", { plan: "# notice 护栏\n- 一步" }, undefined, undefined, { ui });
+  assert(notices().length === beforeApprove, "批准退出 → 不发 plan/mode:notice");
+  assert(activeEntries()[activeEntries().length - 1]!.data?.active === false, "批准退出 → 状态确实翻转为 false（非空转）");
+
+  // (4) 批准后同轮立刻 /plan on：gate 已被审批路径校正为 false → 正常叙述
+  //     （修前是静默窗口：lastInformedActive 仍停在 true，要等下一次 before_agent_start）
+  const beforeWindow = notices().length;
+  await planHandler("on", { ui });
+  assert(notices().length === beforeWindow + 1, "批准后同轮 /plan on → 会叙述（gate 已同步，无静默窗口）");
+  assert(
+    (notices()[notices().length - 1]!.message as { content?: string }).content ===
+      "The user switched this session to plan mode.",
+    "该叙述文案 = switched to plan mode",
+  );
+  assert(activeEntries()[activeEntries().length - 1]!.data?.active === true, "状态确实回到 true");
+
+  // (3) 对照组：用户 /plan off 会叙述，且 shape 正确
+  const beforeOff = notices().length;
+  await planHandler("off", { ui });
+  const sentNotices = notices();
+  assert(sentNotices.length === beforeOff + 1, "/plan off → 发一条 plan/mode:notice（对照组非空）");
+  const last = sentNotices[sentNotices.length - 1]!;
+  assert(
+    (last.message as { content?: string }).content === "The user switched this session back to the default mode.",
+    "notice 文案 = back to the default mode",
+  );
+  assert((last.message as { display?: boolean }).display === true, "notice display: true");
+  assert(
+    (last.options as { deliverAs?: string } | undefined)?.deliverAs === "steer",
+    "notice 走 steer 通道（deliverAs: steer）",
+  );
+
+  // (2) 继续规划路径静默
+  await planHandler("on", { ui }); // 回到 active（这一步本身会叙述，取基线）
+  const beforeKeep = notices().length;
+  selectResults.push("继续规划");
+  try {
+    await ex.execute("6", { plan: "# notice 护栏二\n- 一步" }, undefined, undefined, { ui });
+  } catch {
+    /* 继续规划 → 抛错，是预期 */
+  }
+  assert(notices().length === beforeKeep, "继续规划 → 不发 plan/mode:notice");
+} catch (e) {
+  failed++;
+  console.error(`  ✗ notice 语义测试异常: ${e instanceof Error ? e.message : String(e)}`);
 }
 
 console.log(`\n结果是: ${passed} passed, ${failed} failed`);

@@ -193,6 +193,10 @@ export default function planExtension(pi: ExtensionAPI): void {
       if (choice === "批准") {
         setActive(false);
         updatePlanBadge(ctx.ui);
+        // gate 与模型认知对齐：工具结果已把「已退出」告知模型（dsh 靠每次 request/header
+        // 刷新 activeAtLastHeader，不存在此窗口）。不校正的话，紧随其后的 `/plan on`
+        // 会因 gate 仍停在 true 而被静默——用户看不到切回计划模式的叙述。
+        lastInformedActive = false;
         return {
           content: [{ type: "text", text: "计划已批准 — 已退出计划模式；从下一步开始执行该计划。" }],
           details: undefined,
