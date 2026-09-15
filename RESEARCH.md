@@ -27,21 +27,22 @@
 - **→ `pi-plan-dsh` = 引导轴（软），`pi-sandbox-dsh` = 强制轴（硬），正交配对。** 这正对应 `pi-sandbox-dsh` AGENTS.md 那条"写面是全局档位、与是否处于计划阶段解耦"。
 
 ### 1.3 机制（源码锚点）
-| 机制 | dsh 实现 | 源码 |
+| 机制 | dsh 实现 | 源码（核对于 HEAD `0d1f50007f`） |
 |---|---|---|
-| **状态** | `plan/mode:{active}` log-only whole-value-replace；`plan` 投影折叠 `command/run`、`command/done`、`plan/mode`、`request/header` → 对外 `{active,pending}`；`PlanUnitState` = active/wanted/running/activeAtLastHeader | `plan-mode/src/index.ts` + `types.ts` |
-| **引导** | `ctx.systemPrompt.section({name:'plan:policy', order:PLAN_POLICY(500), text:ctx=>active?section:''})` —— 只改 prompt，不改工具目录 | `index.ts` |
-| **命令** | `/plan [off|message]`：裸=`on`；`off`=`off`（带附件拒绝）；message=`on`+`agent.steer()` | `index.ts` |
-| **退出工具** | `exit_plan_mode` **始终注册**；参数 `plan:string`；输出 `{approved:true}`；execute 校验 active + `#`markdown；审核走 `userQuestions.ask`（`plan-review` intent，Approve/Keep planning + 反馈） | `index.ts` |
-| **边界落地** | `agent/pre-step` waterfall：每步组装前先 `next()` 接受步骤、再 append pending `plan/mode`；开着回合 pending、下一 accepted pre-step 落地；append 失败不阻塞回合 | `agent-loop/src/agent.ts` `preStep()` |
-| **校验** | `invariant.ts` 校验 `plan/mode` 载荷为 boolean | `invariant.ts` |
+| **状态** | `plan/mode:{active}` log-only whole-value-replace；`plan` 投影（`stateVersion: 3`）折叠 `command/run`、`command/done`、`plan/mode`、`request/header` → 对外 `{active,pending}`；`PlanUnitState` = active/wanted/running/activeAtLastHeader | `plan-mode/src/index.ts:132-169` + `types.ts:21-38` |
+| **引导** | `ctx.systemPrompt.section({name:'plan:policy', order:PLAN_POLICY(500), text:ctx=>active?section:''})` —— 只改 prompt，不改工具目录；text 读 `pending?.active ?? loggedActive` | `index.ts:212-219` |
+| **命令** | `/plan [off|message]`：裸=`on`；`off`=`off`（带附件拒绝）；message/附件=`on`+`agent.steer()`；`definitionId` = 包名（发现元数据） | `index.ts:226-266`（`definitionId` `:227`） |
+| **退出工具** | `exit_plan_mode` **始终注册**；参数 `plan:string`（须 `#` 标题）；输出 `{approved:true}`（const）；审核走 `userQuestions.ask`（`plan-review` intent，Approve/Keep planning + 反馈）；dismissed → 失败调用；无 channel / 重载中 → fail-closed | `index.ts:273-360` |
+| **边界落地** | `agent/pre-step` waterfall：每步组装前先 `next()` 接受步骤、再 append pending `plan/mode`；开着回合 pending、下一 accepted pre-step 落地；append 失败不阻塞回合；pending 的 narration 追加进 `decision.messages` | `index.ts:192-206` + `agent-loop/src/agent.ts` `preStep()` |
+| **通知（narration）** | 仅当上次 `request/header` 记录的状态存在且与目标不同才产出；无 open turn → `set()` 即时 `agent.inject()`；open turn → 下一步 accepted pre-step 投递 | `index.ts:452-463` · `:429-432` · `:374` |
+| **校验** | `invariant.ts` 校验 `plan/mode` 载荷为 boolean | `invariant.ts:20` |
 
 ### 1.4 模型体验 / 语义细节
 - inactive 0 token；active 注入 `section`（order 500）。
 - `/plan`、`/plan off` 及其结果**不进模型历史**；`<message>` 经 steer 成为普通用户消息（附件保持选择顺序）。
 - 工具 schema 两种状态都注册（切换只改 prompt，不改目录）。
 - **审批结果：** approve → silent pending exit（当前 tool batch 的 plan 引导仍生效，下个边界才落地）；Keep planning → 失败调用携带用户反馈；dismissed(ASK_CANCELLED) → 失败调用"留在 plan、等用户消息"；无 `userQuestions` / 服务重载中 → fail-closed，靠 `/plan off` 手动逃生。
-- 通知（narration）：仅上次 `request/header` 描述相反状态才 `agent.inject()` 一条"用户切到 plan/默认模式"用户消息。
+- 通知（narration）：仅上次 `request/header` 描述相反状态才产出——无 open turn 时 `set()` 即时 `agent.inject()` 一条“用户切到 plan/默认模式”用户消息；开着回合时挂 `{narrate:true}`，下一步 accepted pre-step 将同一条消息追加进 `decision.messages`。
 
 ### 1.5 设计笔记要点（决策依据）
 - 曾引入通用 named-mode registry，因只 ship `plan` 而被砍——"mode"横跨不相关领域，统一抽象会**遮蔽独立所有权**。
@@ -191,7 +192,7 @@ export default function planExtension(pi: ExtensionAPI): void {
 - `npm test`：bridge `foldPlanMode`/`resolvePlanConfig`/`hasPlanHeading`/`renderPlanPolicy`；core 实例化 + `/plan` 命令 + `before_agent_start` 注入 + `exit_plan_mode` 校验（仿 `pi-sandbox-dsh` load.spec，用 mock pi）。
 - 规模参考：2 个包，src 控制在 ~800 行内（核心小，贴合 dsh 单包哲学）。
 
-### 2.10 源码锚点（移植对照）
+### 2.10 源码锚点（移植对照；核对于 dsh HEAD `0d1f50007f` / `0.1.6-alpha.1`）
 - `~/projects/deepseek-harness/packages/plan/plan-mode/src/index.ts`
 - `.../plan-mode/src/types.ts` · `.../plan-mode/src/invariant.ts`
 - `.../plan-mode/README.md`（模型体验/限制）
