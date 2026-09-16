@@ -33,7 +33,7 @@
 
 ## 后端
 
-无——这是纯引导扩展（无 OS 沙箱、无 preview/question 能力 seam）。设计依据与已知取舍见 [DESIGN.md](DESIGN.md)。
+无——这是纯引导扩展（无 OS 沙箱、无 preview/question 能力 seam）。架构、不变量与已知取舍见 [docs/architecture.md](docs/architecture.md)。
 
 ## 许可证
 

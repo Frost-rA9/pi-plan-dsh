@@ -33,7 +33,7 @@ The plan/enforcement split mirrors dsh and is fully orthogonal:
 
 ## Backends
 
-None — this is a guidance-only extension (no OS sandbox, no preview/question capability seam). See [DESIGN.md](DESIGN.md) for the design rationale and the known trade-offs.
+None — this is a guidance-only extension (no OS sandbox, no preview/question capability seam). See [docs/architecture.md](docs/architecture.md) for the architecture, invariants, and known trade-offs.
 
 ## License
 
